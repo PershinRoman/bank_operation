@@ -2,8 +2,7 @@ import os
 import datetime
 import pandas as pd
 import pytest
-
-from  src.reports import spending_by_category, save_report
+from src.reports import spending_by_category, save_report
 
 
 @pytest.fixture
@@ -25,7 +24,7 @@ def sample_transactions():
             "Продукты",  # попадает
             "Продукты",  # попадает
             "Продукты",  # попадает, если тестовая дата '2023-10-31'
-            "Продукты"  # не должен попасть – дата позже тестовой даты
+            "Продукты"   # не должен попасть – дата позже тестовой даты
         ],
         "Сумма платежа": [
             150.0,
@@ -45,7 +44,7 @@ def test_spending_by_category_with_explicit_date(sample_transactions):
     """
     Проверяем, что функция корректно фильтрует транзакции за последние 3 месяца от заданной даты.
     """
-    # Установим тестовую дату: 2023-10-31
+    # Установим тестовую дату: 2023-10-31 23:59:59
     test_date = "2023-10-31 23:59:59"
     result = spending_by_category(sample_transactions, "Продукты", test_date)
 
@@ -55,7 +54,7 @@ def test_spending_by_category_with_explicit_date(sample_transactions):
     # 2023-08: 100.0
     # 2023-09: 200.0
     # 2023-10: 250.0
-    expected_index = pd.period_range(start="2023-07", end="2023-10", freq='M')
+    expected_index = pd.period_range(start="2023-07", end="2023-10", freq="M")
     expected_values = [150.0, 100.0, 200.0, 250.0]
     expected_series = pd.Series(data=expected_values, index=expected_index).round(2)
 
@@ -70,12 +69,11 @@ def test_spending_by_category_with_default_date(sample_transactions):
     что возвращаемая Series имеет тип PeriodIndex и не содержит транзакций за будущее.
     """
     result = spending_by_category(sample_transactions, "Продукты")
-    # Получаем текущую дату и вычисляем дату 3 месяца назад
-    current_date = pd.to_datetime('today')
-    date_3_months_ago = current_date - pd.DateOffset(months=3)
+    current_date = pd.to_datetime("today")
+    # Убрал вычисление переменной date_3_months_ago, так как она не используется
 
     # Проверяем, что в результате не попали транзакции, позже текущей даты
-    assert result.index.max() <= current_date.to_period('M')
+    assert result.index.max() <= current_date.to_period("M")
 
 
 # --- Тест для декоратора save_report ---
@@ -91,7 +89,6 @@ def test_save_report(tmp_path):
     def dummy_report(a, b):
         return {"result": a + b}
 
-    # Задаём параметры
     a, b = 5, 7
     result = dummy_report(a, b)
 
@@ -99,17 +96,15 @@ def test_save_report(tmp_path):
     assert result == {"result": 12}
 
     # Формируем ожидаемое имя файла
-    today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+    today_str = datetime.datetime.now().strftime("%Y-%m-%d")
     filename = f"dummy_report_report_{today_str}.txt"
-    file_path = tmp_path / filename
+    # Ранее была создана переменная file_path, но она не использовалась, поэтому удаляем её
 
-    # Поскольку декоратор создаёт файл в рабочей директории,
-    # переименовываем его в tmp_path для тестирования:
     # 1. Проверим, что файл существует в текущей директории.
     assert os.path.exists(filename), f"Файл {filename} не найден в рабочей директории."
 
     # 2. Открываем и проверяем содержимое файла
-    with open(filename, 'r', encoding='utf-8') as f:
+    with open(filename, "r", encoding="utf-8") as f:
         file_content = f.read()
     assert file_content == str(result)
 

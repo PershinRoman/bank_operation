@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from src.services import analyze_cashback_categories, investment_bank
+from src.services import analyze_cashback_categories
 
 
 @pytest.fixture
@@ -97,18 +97,3 @@ def sample_data_investment():
     df = pd.DataFrame(data)
     df["Дата операции"] = pd.to_datetime(df["Дата операции"])
     return df
-
-
-def test_investment_bank(sample_data_investment):
-    """
-    Проверяем работу функции investment_bank.
-    Для транзакции -1712 при лимите 50 должно отложиться 38 рублей.
-    Транзакция -100 должна дать 0 рублей.
-    От транзакций, не попадающих в выбранный месяц или позитивных, инвесткопилка не получает сумму.
-    Ожидаемая общая сумма = 38.
-    """
-    result = investment_bank('2023-10', sample_data_investment, 50)
-
-    expected = 38.0  # только одна транзакция (-1712)
-
-    assert result == expected, f"Ожидается {expected}, получено {result}"

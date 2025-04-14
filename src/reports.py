@@ -1,49 +1,109 @@
-import pandas as pd
+import json
+import logging
 import datetime
+import pandas as pd
+from functools import wraps
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
 
 
-"""Функция расчёта трат по категор"""
+def save_report(filename: str = None):
+    """
+    Декоратор для записи результатов функции-отчёта в файл.
+    Если filename не указан, используется имя по умолчанию: report_<current_date>.txt
+    """
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            result = func(*args, **kwargs)
+            # Определяем имя файла
+            file_name = filename or f"report_{datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.txt"
+            try:
+                with open(file_name, "w", encoding="utf-8") as f:
+                    # Можно сохранить в виде json, если результат сериализуем
+                    f.write(json.dumps(result, indent=2, ensure_ascii=False))
+                logger.info(f"Report saved in file: {file_name}")
+            except Exception as e:
+                logger.error(f"Error saving report: {e}")
+            return result
+
+        return wrapper
+
+    return decorator
 
 
-def spending_by_category(transactions, category, date=None):
-    if date is None:
-        date = pd.to_datetime('today')
+@save_report()  # Можно указать имя файла: @save_report("название.txt")
+def spending_by_category(df: pd.DataFrame, category: str, date_str: str = None) -> dict:
+    """
+    Возвращает траты по заданной категории за последние три месяца от указанной даты.
+    Если date_str не передан, берется текущая дата.
+
+    Формат выходных данных:
+    {
+      "YYYY-MM": сумма,
+      "YYYY-MM": сумма,
+      ...
+    }
+    """
+    # Определяем дату анализа
+    if date_str:
+        try:
+            current_date = datetime.datetime.strptime(date_str, "%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            logger.error(f"Invalid date format: {date_str}. Expected 'YYYY-MM-DD HH:MM:SS'.")
+            current_date = datetime.datetime.now()
     else:
-        date = pd.to_datetime(date)
+        current_date = datetime.datetime.now()
 
     # Определяем дату три месяца назад
-    date_3_months_ago = date - pd.DateOffset(months=3)
+    # Пример: если текущая дата 2023-10-23, то начало интервала 2023-07-23
+    date_3_months_ago = current_date - pd.DateOffset(months=3)
 
-    # Фильтруем данные по дате и категории
-    transactions['Дата операции'] = pd.to_datetime(transactions['Дата операции'])
-    filtered_transactions = transactions[
-        (transactions['Дата операции'] >= date_3_months_ago) &
-        (transactions['Дата операции'] <= date) &
-        (transactions['Категория'] == category)
-    ]
+    # Фильтруем DataFrame по дате и категории
+    mask = (df["Дата операции"] >= date_3_months_ago) & (df["Дата операции"] <= current_date) & (df["Категория"] == category)
+    df_filtered = df[mask].copy()
 
-    # Группируем по месяцу и суммируем суммы операций
-    filtered_transactions['Месяц'] = filtered_transactions['Дата операции'].dt.to_period('M')
-    monthly_spending = filtered_transactions.groupby('Месяц')['Сумма платежа'].sum()
+    if df_filtered.empty:
+        logger.info(f"No transactions found for category '{category}' in the last 3 months.")
+        return {}
 
-    return monthly_spending.round(2)
-
-
-# Считываем данные
-df = pd.read_excel('data/operations.xls')
-
-# Рассчитываем траты по категории 'Продукты' за последние три месяца
-category_spending = spending_by_category(df, 'Продукты')
-
-# Выводим результат
-print(category_spending)
+    # Группируем по месяцу и суммируем "Сумма платежа"
+    df_filtered["year_month"] = df_filtered["Дата операции"].dt.to_period("M")
+    grouped = df_filtered.groupby("year_month")["Сумма платежа"].sum()
+    # Приводим индекс к строкам для JSON-совместимого вывода
+    result = {str(period): round(amount, 2) for period, amount in grouped.items()}
+    return result
 
 
-def save_report(func):
-    def wrapper(*args, **kwargs):
-        result = func(*args, **kwargs)
-        filename = f"{func.__name__}_report_{datetime.datetime.now().strftime('%Y-%m-%d')}.txt"
-        with open(filename, 'w', encoding='utf-8') as f:
-            f.write(str(result))
-        return result
-    return wrapper
+if __name__ == '__main__':
+    # Пример данных для отчёта
+    data = {
+        "Дата операции": [
+            "2023-07-31 10:00:00",  # входит в интервал
+            "2023-08-15 12:00:00",
+            "2023-09-10 14:00:00",
+            "2023-10-05 09:00:00",
+            "2023-11-01 18:00:00"  # вне интервала
+        ],
+        "Категория": [
+            "Продукты",
+            "Продукты",
+            "Продукты",
+            "Продукты",
+            "Продукты"
+        ],
+        "Сумма платежа": [
+            150.0,
+            100.0,
+            200.0,
+            250.0,
+            300.0
+        ]
+    }
+    df = pd.DataFrame(data)
+    df["Дата операции"] = pd.to_datetime(df["Дата операции"])
+
+    report = spending_by_category(df, "Продукты", "2023-10-31 23:59:59")
+    print(json.dumps(report, indent=2, ensure_ascii=False))

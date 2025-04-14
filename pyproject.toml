@@ -7,8 +7,21 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.13"
-
+python-dotenv = "^1.1.0"
 
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.black]
+line-length = 88
+target-version = ['py37', 'py38', 'py39', 'py310']
+
+[tool.isort]
+profile = "black"
+line_length = 88
+known_third_party = ["flask", "django"]
+
+[tool.mypy]
+files = "src"
+ignore_missing_imports = true

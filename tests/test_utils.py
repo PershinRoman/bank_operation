@@ -49,9 +49,6 @@ def test_read_excel_data_file_not_found():
         read_excel_data(invalid_filepath)
 
 
-"""Тесты для функции fetch_data_from_api"""
-
-
 class DummyResponse:
     """
     Класс-имитация ответа requests.
