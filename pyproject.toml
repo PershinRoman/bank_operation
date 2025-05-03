@@ -25,3 +25,29 @@ known_third_party = ["flask", "django"]
 [tool.mypy]
 files = "src"
 ignore_missing_imports = true
+
+certifi==2025.1.31
+charset-normalizer==3.4.1
+et_xmlfile==2.0.0
+flake8==7.1.2
+idna==3.10
+iniconfig==2.0.0
+mccabe==0.7.0
+mypy==1.15.0
+mypy-extensions==1.0.0
+numpy==2.2.3
+openpyxl==3.1.5
+packaging==24.2
+pandas==2.2.3
+pluggy==1.5.0
+pycodestyle==2.12.1
+pyflakes==3.2.0
+pytest==8.3.5
+python-dateutil==2.9.0.post0
+python-dotenv==1.1.0
+pytz==2025.1
+requests==2.32.3
+six==1.17.0
+typing_extensions==4.12.2
+tzdata==2025.1
+urllib3==2.3.0
