@@ -1,7 +1,6 @@
 import os
 import json
 import logging
-import argparse
 import datetime
 from typing import List, Dict, Any, Optional
 
@@ -173,27 +172,18 @@ def get_top_transactions(df: pd.DataFrame) -> List[Dict[str, Any]]:
     return res
 
 
-def get_currency_rates(currencies: List[str], base_url: str = CURRENCY_API_URL) -> List[Dict[str, Any]]:
-    """
-    Запрашивает курсы указанных валют относительно рубля.
+def get_currency_rates(currencies):
+    rates = []
+    response = requests.get("https://api.exchangerate-api.com/v4/latest/USD")  # Замените на реальный URL
+    data = response.json()
 
-    Args:
-        currencies (list): список валютных кодов.
-        base_url (str): URL API.
+    for currency in currencies:
+        rate = data.get("rates", {}).get(currency)
+        if rate is None:
+            rate = "Not available"
+        rates.append({"currency": currency, "rate": rate})
 
-    Returns:
-        list: список словарей с 'currency' и 'rate'.
-    """
-    if not currencies:
-        return []
-    try:
-        resp = session.get(base_url, timeout=10)
-        resp.raise_for_status()
-        rates = resp.json().get("rates", {})
-    except requests.RequestException as e:
-        logger.error(f"Failed to fetch currency rates: {e}")
-        rates = {}
-    return [{"currency": c, "rate": rates.get(c, "Not available")} for c in currencies]
+    return rates
 
 
 def get_stock_prices(stocks: List[str],

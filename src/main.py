@@ -2,10 +2,15 @@ import json
 import logging
 import datetime
 import pandas as pd
-
-from src.utils import read_excel_data, fetch_data_from_api
+from dotenv import load_dotenv
+import os
+from src.utils import fetch_data_from_api
 
 logger = logging.getLogger(__name__)
+load_dotenv()
+
+api_key = os.getenv("API_KEY")
+another_api_key = os.getenv("ANOTHER_API_KEY")
 
 
 def load_user_settings(filepath: str) -> dict:
@@ -40,17 +45,28 @@ def main(date_str: str) -> dict:
         input_date = datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
     except ValueError:
         logger.error(f"Invalid date format: {date_str}, should be YYYY-MM-DD HH:MM:SS.")
-        # Возвращаем пустой результат или делаем raise — по выбору
         return {}
 
     # Приветствие
     greeting = get_greeting(input_date.time())
 
     # Считываем данные
-    df = read_excel_data('data/operations.xls')
+    try:
+        df = pd.read_excel('data/operations.xls')
+    except FileNotFoundError:
+        logger.error("Operations file not found.")
+        return {}
+    except Exception as e:
+        logger.error(f"Error reading operations file: {e}")
+        return {}
 
     # Фильтруем данные c начала месяца до указанной даты
+    df['Дата операции'] = pd.to_datetime(df['Дата операции'], errors='coerce')
     start_of_month = input_date.replace(day=1, hour=0, minute=0, second=0)
+
+    if df['Дата операции'].isnull().any():
+        print("Некоторые даты не были корректно преобразованы")
+
     mask = (df['Дата операции'] >= start_of_month) & (df['Дата операции'] <= input_date)
     df_filtered = df[mask]
 
@@ -77,6 +93,7 @@ def main(date_str: str) -> dict:
         'currency_rates': rates,
         'stock_prices': stocks
     }
+
     return data_output
 
 
@@ -144,7 +161,7 @@ def get_stock_prices(stocks: list) -> dict:
     """
     if not stocks:
         return {}
-    api_key = "YOUR_API_KEY"  # Подставьте свой ключ или используйте другой сервис
+    api_key = "YOUR_API_KEY"
     results = {}
     base_url = "https://www.alphavantage.co/query"
     for symbol in stocks:

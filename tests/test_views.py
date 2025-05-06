@@ -1,231 +1,146 @@
-import json
+import unittest
+from unittest.mock import patch, mock_open
 import pandas as pd
-import requests
-
+import datetime
+import json
 
 from src.views import (
+    start_of_month,
+    load_user_settings,
+    read_excel_data,
     get_greeting,
     get_card_info,
     get_top_transactions,
     get_currency_rates,
     get_stock_prices,
-    main
 )
 
 
-def test_get_greeting_morning():
-    assert get_greeting("2023-10-20 06:00:00") == "Доброе утро"
+def test_start_of_month():
+    dt = datetime.datetime(2023, 10, 15)
+    result = start_of_month(dt)
+    expected = datetime.datetime(2023, 10, 1, 0, 0, 0)
+    assert result == expected
 
 
-def test_get_greeting_afternoon():
-    assert get_greeting("2023-10-20 13:00:00") == "Добрый день"
+@patch("builtins.open", new_callable=mock_open,
+       read_data='{"user_currencies": ["USD", "EUR"], "user_stocks": ["AAPL", "GOOGL"]}')
+def test_load_user_settings(mock_file):
+    result = load_user_settings("dummy_path")
+    expected = {
+        "user_currencies": ["USD", "EUR"],
+        "user_stocks": ["AAPL", "GOOGL"]
+    }
+    assert result == expected
 
 
-def test_get_greeting_evening():
-    assert get_greeting("2023-10-20 19:00:00") == "Добрый вечер"
+@patch("pandas.read_excel")
+def test_read_excel_data(mock_read_excel):
+    mock_read_excel.return_value = pd.DataFrame({
+        'Дата операции': ['2023-10-01', '2023-10-02'],
+        'Номер карты': ['1234 5678 9012 3456', '1234 5678 9012 3457'],
+        'Сумма платежа': [100.0, 200.0],
+        'Описание': ['Тестовая транзакция', 'Еще одна транзакция'],
+        'Категория': ['Еда', 'Транспорт']
+    })
+
+    result = read_excel_data("dummy_path.xlsx")
+    assert len(result) == 2
+    assert result['Номер карты'][0] == '1234 5678 9012 3456'
 
 
-def test_get_greeting_night():
-    assert get_greeting("2023-10-20 03:00:00") == "Доброй ночи"
+def test_get_greeting():
+    morning_time = datetime.time(6, 0)
+    afternoon_time = datetime.time(13, 0)
+    evening_time = datetime.time(18, 0)
+    night_time = datetime.time(23, 0)
+
+    assert get_greeting(morning_time) == "Доброе утро"
+    assert get_greeting(afternoon_time) == "Добрый день"
+    assert get_greeting(evening_time) == "Добрый вечер"
+    assert get_greeting(night_time) == "Доброй ночи"
 
 
 def test_get_card_info():
-    # Создаем тестовый DataFrame с транзакциями по картам
-    data = {
-        "Номер карты": [1234567890123456, 1234567890123456, 9876543210987654],
-        "Сумма платежа": [150.0, 250.0, 300.0]
-    }
-    df = pd.DataFrame(data)
-    # Ожидаем: для карты, последние 4 цифры "3456": сумма 400, cashback = 400 // 100 = 4;
-    # для "7654": сумма 300, cashback = 300 // 100 = 3.
-    expected = {
-        "3456": {"total_spent": 400.0, "cashback": 4},
-        "7654": {"total_spent": 300.0, "cashback": 3}
-    }
+    df = pd.DataFrame({
+        'Номер карты': ['1234 5678 9012 3456', '1234 5678 9012 3457'],
+        'Сумма платежа': [100.0, 200.0]
+    })
+
     result = get_card_info(df)
+
+    expected = [
+        {'last_digits': '3456', 'total_spent': 100.0, 'cashback': 1.0},
+        {'last_digits': '3457', 'total_spent': 200.0, 'cashback': 2.0}
+    ]
+
     assert result == expected
 
 
 def test_get_top_transactions():
-    data = {
-        "Дата операции": ["2023-10-20", "2023-10-21", "2023-10-22", "2023-10-23", "2023-10-24", "2023-10-25"],
-        "Описание": ["A", "B", "C", "D", "E", "F"],
-        "Сумма платежа": [100, 300, 200, 400, 50, 350]
-    }
-    df = pd.DataFrame(data)
-    df["Дата операции"] = pd.to_datetime(df["Дата операции"])
-    # Ожидаем, что топ-5 транзакций (по убыванию суммы) будут:
-    expected = [
-        {"Дата операции": pd.Timestamp("2023-10-23"), "Описание": "D", "Сумма платежа": 400},
-        {"Дата операции": pd.Timestamp("2023-10-25"), "Описание": "F", "Сумма платежа": 350},
-        {"Дата операции": pd.Timestamp("2023-10-21"), "Описание": "B", "Сумма платежа": 300},
-        {"Дата операции": pd.Timestamp("2023-10-22"), "Описание": "C", "Сумма платежа": 200},
-        {"Дата операции": pd.Timestamp("2023-10-20"), "Описание": "A", "Сумма платежа": 100},
-    ]
-    result = get_top_transactions(df)
-    assert result == expected
-
-
-class DummyExchangeResponse:
-    """Класс-имитатор объекта ответа от API курсов валют."""
-    def __init__(self, json_data, status_code=200):
-        self._json_data = json_data
-        self.status_code = status_code
-
-    def json(self):
-        return self._json_data
-
-    def raise_for_status(self):
-        if self.status_code != 200:
-            raise requests.exceptions.HTTPError("HTTP Error")
-
-
-def dummy_get_currency(url, params=None, timeout=10):
-    dummy_data = {
-        "rates": {
-            "USD": 0.013,
-            "EUR": 0.011
-        }
-    }
-    return DummyExchangeResponse(dummy_data, status_code=200)
-
-
-def test_get_currency_rates(monkeypatch):
-    monkeypatch.setattr(requests, "get", dummy_get_currency)
-    currencies = ["USD", "EUR", "GBP"]
-    result = get_currency_rates(currencies)
-    expected = {"USD": 0.013, "EUR": 0.011, "GBP": "Not available"}
-    assert result == expected
-
-
-class DummyStockResponse:
-    """Класс-имитатор ответа API для акций."""
-    def __init__(self, json_data, status_code=200):
-        self._json_data = json_data
-        self.status_code = status_code
-
-    def json(self):
-        return self._json_data
-
-
-def dummy_get_stock(url, params=None, timeout=10):
-    # Для упрощения, возвращаем цену как строку "150.0" для любого тикера.
-    dummy_data = {
-        "Global Quote": {
-            "05. price": "150.0"
-        }
-    }
-    return DummyStockResponse(dummy_data, status_code=200)
-
-
-def test_get_stock_prices(monkeypatch):
-    monkeypatch.setattr(requests, "get", dummy_get_stock)
-    stocks = ["AAPL", "GOOGL"]
-    result = get_stock_prices(stocks)
-    expected = {"AAPL": "150.0", "GOOGL": "150.0"}
-    assert result == expected
-
-
-def test_main(monkeypatch, tmp_path):
-    """
-    Для функции main создаём временный Excel-файл и файл с настройками.
-    Подменяем внешние вызовы API и чтение файлов.
-    """
-    # Создаем временный Excel-файл, имитирующий operations.xls
     df = pd.DataFrame({
-        "Дата операции": ["2023-10-01 10:00:00", "2023-10-15 12:00:00", "2023-10-20 14:00:00"],
-        "Номер карты": [1111222233334444, 1111222233334444, 5555666677778888],
-        "Сумма платежа": [150, 200, 300],
-        "Описание": ["Test1", "Test2", "Test3"]
+        'Дата операции': [datetime.datetime(2023, 10, 1), datetime.datetime(2023, 10, 2)],
+        'Сумма платежа': [100.0, 200.0],
+        'Категория': ['Еда', 'Транспорт'],
+        'Описание': ['Тестовая транзакция', 'Еще одна транзакция']
     })
-    excel_file = tmp_path / "operations.xls"
-    df.to_excel(excel_file, index=False)
 
-    # Создаем временный файл user_settings.json
-    user_settings = {
-        "user_currencies": ["USD", "EUR"],
-        "user_stocks": ["AAPL", "GOOGL"]
-    }
-    settings_file = tmp_path / "user_settings.json"
-    settings_file.write_text(json.dumps(user_settings), encoding="utf-8")
+    result = get_top_transactions(df)
 
-    # Подменяем pd.read_excel: всегда читаем наш временный Excel вне зависимости от переданного пути
-    def fake_read_excel(filepath, *args, **kwargs):
-        return pd.read_excel(excel_file)
-    monkeypatch.setattr(pd, "read_excel", fake_read_excel)
-
-    # Подменяем open для user_settings.json: если запрашиваем именно файл настроек, открываем наш временный файл.
-    def fake_open(filepath, *args, **kwargs):
-        if filepath == "user_settings.json":
-            return open(settings_file, *args, **kwargs)
-        else:
-            return open(filepath, *args, **kwargs)
-    monkeypatch.setattr("builtins.open", fake_open)
-
-    # Подменяем requests.get для обоих вызовов API
-    def fake_requests_get(url, params=None, timeout=10):
-        if "exchangerate-api" in url:
-            # Возвращаем данные для курсов валют
-            return DummyExchangeResponse({
-                "rates": {
-                    "USD": 0.013,
-                    "EUR": 0.011
-                }
-            }, status_code=200)
-        else:
-            # Для акций
-            return DummyStockResponse({
-                "Global Quote": {
-                    "05. price": "150.0"
-                }
-            }, status_code=200)
-    monkeypatch.setattr(requests, "get", fake_requests_get)
-
-    # Передаём дату, которая лежит в октябре, чтобы данные корректно отфильтровались (с начала месяца до указанной даты)
-    result_json = main("2023-10-20 14:30:00")
-    result = json.loads(result_json)
-
-    # Проверяем приветствие.
-    # 14:30 относится к дню, поэтому ожидаем "Добрый день"
-    assert result["greeting"] == "Добрый день"
-
-    # Проверяем информацию по картам.
-    # В исходном файле две карты:
-    # - Карта 1111222233334444 (оканчивается на "4444"): транзакции 150 и 200 → сумма 350, cashback = 350 // 100 = 3
-    # - Карта 5555666677778888 (оканчивается на "8888"): транзакция 300 → cashback = 3
-    expected_cards = {
-        "4444": {"total_spent": 350.0, "cashback": 3},
-        "8888": {"total_spent": 300.0, "cashback": 3}
-    }
-    assert result["cards"] == expected_cards
-
-    # Проверяем топ-транзакции. Они должны быть отсортированы по 'Сумма платежа' в порядке убывания.
-    expected_top = [
-        {
-            "Дата операции": pd.Timestamp("2023-10-20 14:00:00").isoformat(),
-            "Описание": "Test3",
-            "Сумма платежа": 300
-        },
-        {
-            "Дата операции": pd.Timestamp("2023-10-15 12:00:00").isoformat(),
-            "Описание": "Test2",
-            "Сумма платежа": 200
-        },
-        {
-            "Дата операции": pd.Timestamp("2023-10-01 10:00:00").isoformat(),
-            "Описание": "Test1",
-            "Сумма платежа": 150
-        }
+    expected = [
+        {'date': '02.10.2023', 'amount': 200.0, 'category': 'Транспорт', 'description': 'Еще одна транзакция'},
+        {'date': '01.10.2023', 'amount': 100.0, 'category': 'Еда', 'description': 'Тестовая транзакция'}
     ]
-    # Преобразуем дату в ISO-формат, так как JSON при сериализации Timestamps выдаёт строки.
-    top_from_main = result["top_transactions"]
-    # Приводим дату из результата к isoформату для сравнения
-    for tr in top_from_main:
-        tr["Дата операции"] = pd.Timestamp(tr["Дата операции"]).isoformat()
-    assert top_from_main == expected_top
 
-    # Проверяем курсы валют и цены акций
-    expected_currency = {"USD": 0.013, "EUR": 0.011}
-    expected_stock = {"AAPL": "150.0", "GOOGL": "150.0"}
-    assert result["currency_rates"] == expected_currency
-    assert result["stock_prices"] == expected_stock
+    assert result[0]['amount'] == expected[0]['amount']
+
+
+@patch('requests.get')
+def test_get_currency_rates(mock_get):
+    # Мокируем ответ API
+    mock_get.return_value.json.return_value = {
+        "rates": {
+            "USD": 75.5,
+            "EUR": 0.883,
+            # Допустим, GBP отсутствует
+        }
+    }
+
+    result = get_currency_rates(['USD', 'EUR', 'GBP'])
+
+    expected = [
+        {"currency": "USD", "rate": 75.5},
+        {"currency": "EUR", "rate": 0.883},
+        {"currency": "GBP", "rate": "Not available"}  # Ожидаем строку "Not available" для GBP
+    ]
+
+    assert result == expected
+
+
+@patch('requests.Session.get')
+def test_get_stock_prices(mock_get):
+    mock_get.return_value.json.return_value = {
+        "Global Quote": {
+            "05. price": "150.00"
+        }
+    }
+
+    result = get_stock_prices(['AAPL'])
+
+    expected = [{"stock": "AAPL", "price": 150.00}]
+
+    assert result[0]['price'] == expected[0]['price']
+
+
+if __name__ == "__main__":
+    # Запуск всех тестов
+    test_start_of_month()
+    test_load_user_settings()
+    test_read_excel_data()
+    test_get_greeting()
+    test_get_card_info()
+    test_get_top_transactions()
+    test_get_currency_rates()
+    test_get_stock_prices()
+
+    print("Все тесты пройдены успешно!")

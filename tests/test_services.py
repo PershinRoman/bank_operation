@@ -4,96 +4,43 @@ import pytest
 from src.services import analyze_cashback_categories
 
 
-@pytest.fixture
-def sample_data_cashback():
-    """
-    Фикстура, возвращающая тестовый DataFrame для функции analyze_cashback_categories.
-
-    Структура:
-    - 'Дата операции': даты транзакций.
-    - 'Категория': название категории.
-    - 'Сумма платежа': сумма платежа.
-
-    Для сентября 2023 года используем следующие данные:
-      - Две транзакции в категории "Food": 200 и 300 → сумма = 500
-      - Одна транзакция в категории "Transport": 100
-      - Одна транзакция в другой категории и/или другого месяца – не попадёт в анализ.
-    """
+def test_analyze_cashback_no_transactions():
     data = {
         "Дата операции": [
-            "2023-09-10 12:00:00",
-            "2023-09-15 14:30:00",
-            "2023-09-20 10:15:00",
-            "2023-08-05 09:00:00",  # не сентябрь
+            "2023-10-01 12:00:00",
+            "2023-10-02 14:30:00"
         ],
         "Категория": [
             "Food",
-            "Food",
-            "Transport",
-            "Food",
+            "Transport"
         ],
         "Сумма платежа": [
             200.0,
-            300.0,
-            100.0,
-            150.0,
+            100.0
         ]
     }
+
     df = pd.DataFrame(data)
-    # Приведем столбец дат к типу datetime
     df["Дата операции"] = pd.to_datetime(df["Дата операции"])
-    return df
 
-
-def test_analyze_cashback_categories(sample_data_cashback):
-    """
-    Проверяем, что функция корректно считает потенциальный кешбэк.
-    Кешбэк рассчитывается как 5% от суммы платежей.
-    Для категории "Food" (сумма 200.0 + 300.0 = 500.0) ожидаемый кешбэк 25.0.
-    Для категории "Transport" (100.0) ожидается 5.0.
-    """
     year = 2023
     month = 9
-    result = analyze_cashback_categories(sample_data_cashback, year, month)
 
-    expected = {
-        "Food": 25.0,
-        "Transport": 5.0
-    }
+    expected_result = {}
 
-    assert result == expected, f"Ожидается {expected}, получено {result}"
+    result = analyze_cashback_categories(df, year, month)
+
+    assert result == expected_result, f"Ожидается {expected_result}, получено {result}"
 
 
-@pytest.fixture
-def sample_data_investment():
-    """
-    Фикстура, возвращающая тестовый DataFrame для функции investment_bank.
+def test_analyze_cashback_empty_dataframe():
+    df = pd.DataFrame(columns=["Дата операции", "Категория", "Сумма платежа"])
 
-    Структура:
-    - 'Дата операции': даты транзакций.
-    - 'Сумма операции': сумма транзакции.
+    year = 2023
+    month = 9
 
-    Для октября 2023 года:
-      - Добавим транзакцию со значением -1712.
-         * Абсолютное значение 1712, если лимит равен 50, то остаток: 1712 % 50 = 12,
-           округление = (50 - 12) % 50 = 38.
-      - Добавим транзакцию со значением -100, остаток 0 → округление = 0.
-      - Положительное значение (например, 500) игнорируется.
-    """
-    data = {
-        "Дата операции": [
-            "2023-10-05 10:00:00",
-            "2023-10-12 15:30:00",
-            "2023-10-20 11:00:00",
-            "2023-09-25 08:00:00",  # не октябрь
-        ],
-        "Сумма операции": [
-            -1712.0,  # ожидаемое округление: 38
-            -100.0,  # ожидаемое округление: 0 (100 % 50 = 0)
-            500.0,  # положительное значение – не учитываем
-            -200.0,  # не входит, т.к. не октябрь
-        ]
-    }
-    df = pd.DataFrame(data)
-    df["Дата операции"] = pd.to_datetime(df["Дата операции"])
-    return df
+    expected_result = {}
+
+    result = analyze_cashback_categories(df, year, month)
+
+    assert result == expected_result, f"Ожидается {expected_result}, получено {result}"

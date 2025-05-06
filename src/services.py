@@ -1,6 +1,7 @@
 import json
 import logging
 import pandas as pd
+import pytest
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -21,17 +22,60 @@ def analyze_cashback_categories(data: pd.DataFrame, year: int, month: int) -> di
          ...
     }
     """
-    # Фильтруем транзакции по году и месяцу
-    df_filtered = data[(data["Дата операции"].dt.year == year) & (data["Дата операции"].dt.month == month)]
-    if df_filtered.empty:
-        logger.info(f"Нет данных за {year}-{month:02d}")
+    if data.empty or 'Дата операции' not in data.columns:
         return {}
 
-    # Функциональный стиль: сгруппировать по категории и посчитать сумму кешбэка (каждые 100 = 1 рубль)
-    grouped = df_filtered.groupby("Категория")["Сумма платежа"].sum()
-    result = grouped.apply(lambda x: round(x / 100, 2)).to_dict()
+        # Убедимся, что столбец 'Дата операции' имеет тип datetime
+    if not pd.api.types.is_datetime64_any_dtype(data['Дата операции']):
+        return {}
 
-    return result
+    filtered_df = data[(data['Дата операции'].dt.year == year) & (data['Дата операции'].dt.month == month)]
+
+    # Группируем по категории и суммируем
+    cashback = filtered_df.groupby('Категория')['Сумма платежа'].sum() * 0.05
+
+    return cashback.to_dict()
+
+
+@pytest.fixture
+def sample_data_cashback():
+    """
+    Фикстура, возвращающая тестовый DataFrame для функции analyze_cashback_categories.
+
+    Структура:
+    - 'Дата операции': даты транзакций.
+    - 'Категория': название категории.
+    - 'Сумма платежа': сумма платежа.
+
+    Для сентября 2023 года используем следующие данные:
+      - Две транзакции в категории "Food": 200 и 300 → сумма = 500
+      - Одна транзакция в категории "Transport": 100
+      - Одна транзакция в другой категории и/или другого месяца – не попадёт в анализ.
+    """
+    data = {
+        "Дата операции": [
+            "2023-09-10 12:00:00",
+            "2023-09-15 14:30:00",
+            "2023-09-20 10:15:00",
+            "2023-08-05 09:00:00",  # не сентябрь
+        ],
+        "Категория": [
+            "Food",
+            "Food",
+            "Transport",
+            "Food",
+        ],
+        "Сумма платежа": [
+            200.0,
+            300.0,
+            100.0,
+            150.0,
+        ]
+    }
+    df = pd.DataFrame(data)
+    # Приведем столбец дат к типу datetime
+    df["Дата операции"] = pd.to_datetime(df["Дата операции"])
+    return df
 
 
 # Пример вызова анализа — можно добавить дополнительные функции для других сервисов.
