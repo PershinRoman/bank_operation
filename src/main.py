@@ -2,9 +2,19 @@ import json
 import logging
 import datetime
 import pandas as pd
-from dotenv import load_dotenv
-import os
 from src.utils import fetch_data_from_api
+import os
+from dotenv import load_dotenv
+
+# Загрузка переменных окружения из файла .env
+load_dotenv()
+
+# Теперь вы можете получить доступ к переменным окружения
+api_key = os.getenv('API_KEY')
+github_token = os.getenv('GITHUB_TOKEN')
+
+print(f"API Key: {api_key}")
+print(f"GitHub Token: {github_token}")
 
 logger = logging.getLogger(__name__)
 load_dotenv()
@@ -161,9 +171,12 @@ def get_stock_prices(stocks: list) -> dict:
     """
     if not stocks:
         return {}
-    api_key = "YOUR_API_KEY"
+
+    # Используем переменную окружения для API ключа
+    api_key = os.getenv("ANOTHER_API_KEY")  # Замените на правильное имя переменной
     results = {}
     base_url = "https://www.alphavantage.co/query"
+
     for symbol in stocks:
         params = {
             'function': 'GLOBAL_QUOTE',
@@ -171,13 +184,20 @@ def get_stock_prices(stocks: list) -> dict:
             'apikey': api_key
         }
         data = fetch_data_from_api(base_url, params=params)
+
         # Обрабатываем ответ
+        if data is None:
+            logger.error(f"Failed to fetch data for {symbol}")
+            results[symbol] = 'Not available'
+            continue
+
         try:
             price = data['Global Quote']['05. price']
             results[symbol] = price
         except KeyError:
             logger.error(f"Could not find price info for {symbol}")
             results[symbol] = 'Not available'
+
     return results
 
 
